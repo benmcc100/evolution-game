@@ -1,0 +1,356 @@
+<html lang="en-US">
+<head>
+    <meta charset="utf-8" />
+    <!-- <link rel="stylesheet" href="style.css"> -->
+    <script>
+    // Global variables to hold grid values.
+    // Might later add ability to have non-square grid.
+    var CANVAS_HEIGHT_PX = 1000;
+    var CANVAS_WIDTH_PX = 1500;
+    var TICK_TIME = 100; // lower this if grid is big
+
+    var livingCells = new Map();
+    var cellCount = 0;
+    var foodList = new Map();
+    var foodCount = 0;
+
+    var RUNNING = false;
+    var DAY = 0;
+
+    // Shades for cell coloring. Right now
+    // only COLOR_3 and COLOR_2 are used
+    var COLOR_RED = "#CC0000";
+    var COLOR_SUPERLIGHTGREEN = "#00FF7F";
+    var COLOR_LIGHTGREEN = "#7FFF00";
+    var COLOR_GREEN = "#228B22";
+    var COLOR_DARKGREEN = "#006400";
+    var COLOR_BLUE = "#0000CC";
+    var COLOR_BLACK = "#000000";
+     
+
+    // Onload function to initialize canvas element
+    // and add event listeners to the canvas.
+    window.onload = function() {
+        let canvas = document.createElement("canvas");
+        canvas.height = CANVAS_HEIGHT_PX;
+        canvas.width = CANVAS_WIDTH_PX;
+        document.getElementById("arena-canvas").appendChild(canvas);
+        let context = canvas.getContext("2d");
+        initCanvas(canvas, context);
+
+        // right click
+        canvas.oncontextmenu = function(e) {
+            
+        }
+
+        // left click
+        canvas.addEventListener('click', function(e) {
+            
+        });
+
+        // event listeners for buttons
+        let btnRun = document.getElementById("run");
+        let btnPause = document.getElementById("pause");
+        btnRun.addEventListener('click', function() {
+            if(!RUNNING) {
+                runGame(canvas, context);
+            }
+            RUNNING = true;
+        });
+        btnPause.addEventListener('click', function() {
+            RUNNING = false;
+        });
+    }
+
+    function Cell(color, 
+                  x_pos, 
+                  y_pos, 
+                  size, 
+                  speed, 
+                  lifespan, 
+                  reproductiveSize, 
+                  numOffspring,
+                  propensityToRotate) {
+        // non-inherited defaults
+        this.orientation = getRandomInt(0, 360);
+        this.age = 0;
+        this.x_pos = x_pos;
+        this.y_pos = y_pos;
+        // inherited traits based on other traits
+        if (size >= 12) {
+            this.color = COLOR_DARKGREEN;
+        }
+        else if (size >= 10) {
+            this.color = COLOR_GREEN;
+        }
+        else if (size >= 8) {
+            this.color = COLOR_LIGHTGREEN;
+        }
+        else {
+            this.color = COLOR_SUPERLIGHTGREEN;
+        }
+        // size is a function of parent size / num offspring
+        this.size = size;
+        this.birthSize = size;
+        // directly inherited traits
+        this.speed = speed; 
+        this.lifespan = lifespan;
+        this.reproductiveSize = reproductiveSize;
+        this.numOffspring = numOffspring;
+        this.propensityToRotate = propensityToRotate;
+        // methods
+        this.mutate = mutate;
+    }
+
+    function mutate() {
+        // pick random inherited trait and modify it slightly
+        let rand = getRandomInt(0,1);
+        if (rand == 0) {
+            rand = -1;
+        }
+        switch(getRandomInt(0,4)) {
+            case 0:
+                this.speed += rand;
+                break;
+            case 1:
+                this.lifespan += 5*rand;
+                break;
+            case 2:
+                this.reproductiveSize += 2*rand;
+                break;
+            case 3:
+                this.numOffspring += rand;
+                break;
+            case 4:
+                this.propensityToRotate += 15*rand;
+                break;
+            default:
+                break;    
+        }
+    }
+
+    function Food(color, x_pos, y_pos, size) {
+        this.color = color;
+        this.x_pos = x_pos;
+        this.y_pos = y_pos;
+        this.size = size;
+    }
+
+    function initCanvas(canvas, context) {
+        // adam & eves
+        for (i=0; i<1; i++) {
+            livingCells.set(cellCount, new Cell(COLOR_GREEN, getRandomInt(0, CANVAS_WIDTH_PX), getRandomInt(0, CANVAS_HEIGHT_PX), 4, 4, 75, 8, 2, 30));
+            cellCount++;
+        }
+
+        // spawn 1000 foods randomly
+        for (i=0; i<1000; i++) {
+            foodList.set(foodCount, new Food(COLOR_BLUE, getRandomInt(0, CANVAS_WIDTH_PX), getRandomInt(0, CANVAS_HEIGHT_PX), 1));
+            foodCount++;
+        }
+    }
+
+    // runGame: calls tick() at an interval in milliseconds.
+    // Might later add ability to slow down and speed up game
+    // by changing this interval.
+    function runGame(canvas, context) {
+        setInterval(function() {
+            if (RUNNING) {
+                tick(context);
+            }
+        }, TICK_TIME);
+    }
+
+    // tick: Main loop of program activity. Loops through
+    // each cell, counting its neighbors. Makes sure not to
+    // check for non-existent cells outside grid borders.
+    //
+    // Uses this neighbor count to determine if cell will live,
+    // die, or spawn. Then calls draw function and increments
+    // generations variable.
+    //
+    // Does cell spawning/destruction in temporary map to
+    // process all cell actions at once -- must be concurrent for
+    // Game of Life to work.
+    function tick(context) {
+        context.clearRect(0, 0, CANVAS_WIDTH_PX, CANVAS_HEIGHT_PX);
+
+        // spawn new 
+        for (i=0; i<10; i++) {
+            foodList.set(foodCount, new Food(COLOR_BLUE, getRandomInt(0, CANVAS_WIDTH_PX), getRandomInt(0, CANVAS_HEIGHT_PX), 1));
+            foodCount++;
+        }
+
+        drawLivingCells(context);
+        drawFoods(context);
+
+        // cell loop
+        for (let [cell_id, cell] of livingCells.entries()) {
+
+            // cell movement processing
+
+            let moveAmount = cell.speed;
+            cell.orientation += getRandomInt(-cell.propensityToRotate, cell.propensityToRotate);
+            let y = moveAmount * Math.cos(cell.orientation * (Math.PI / 180));
+            let x = moveAmount * Math.sin(cell.orientation * (Math.PI / 180));
+            cell.x_pos += x;
+            cell.y_pos += y;
+            if (cell.x_pos >= CANVAS_WIDTH_PX - (cell.size / 2)) {
+                cell.orientation = 270;
+            }
+            else if (cell.y_pos >= CANVAS_HEIGHT_PX - (cell.size / 2)) {
+                cell.orientation = 180;
+            }
+            else if (cell.x_pos <= 0) {
+                cell.orientation = 90;
+            }
+            else if (cell.y_pos <= 0) {
+                cell.orientation = 0;
+            }
+
+            // detect food collisions
+            for (let [food_id, food] of foodList.entries()) {
+                distance = Math.sqrt((cell.x_pos - food.x_pos)**2 + (cell.y_pos - food.y_pos)**2);
+                if (distance < (cell.size + food.size)) {
+                    cell.size += food.size;
+                    foodList.delete(food_id);
+                }
+            }
+
+            // cell reproduction
+            if (cell.size >= cell.reproductiveSize) {
+                // kill current cell and spawn n babies in its place
+                for (i=0; i<cell.numOffspring; i++) {
+                    livingCells.set(cellCount, new Cell(cell.color, 
+                                                        cell.x_pos, 
+                                                        cell.y_pos,
+                                                        (cell.reproductiveSize / cell.numOffspring), 
+                                                        cell.speed, 
+                                                        cell.lifespan, 
+                                                        cell.reproductiveSize, 
+                                                        cell.numOffspring, 
+                                                        cell.propensityToRotate));
+                    
+                    var c = livingCells.get(cellCount);
+                    if (getRandomInt(0,5) == 4) {
+                        console.log("Mutation Occurring")
+                        livingCells.get(cellCount).mutate();
+                    }
+                    // show cell stats
+                    //var li = document.createElement("li");
+                    //var text = document.createTextNode(`Cell #${cellCount}: size ${c.size}, 
+                    //                                                        speed ${c.speed}, 
+                    //                                                        lifespan ${c.lifespan},
+                    //                                                        reproductiveSize ${c.reproductiveSize},
+                    //                                                        numOffspring ${c.numOffspring},
+                    //                                                        propensityToRotate ${c.propensityToRotate}`);
+                    //li.appendChild(text);
+                    //document.getElementById("stats").appendChild(li);
+
+                    cellCount++;
+                }
+                livingCells.delete(cell_id);
+            }
+
+            // cell death
+            if (cell.age >= cell.lifespan) {
+                livingCells.delete(cell_id);
+            } else {
+                cell.age++;
+            }
+
+            
+
+        } 
+
+        if (DAY % 75 == 0) {
+            // run some stats
+            var sizeDict = {};
+            var speedDict = {};
+            var avgSize = 0;
+            var sumSizes = 0;
+            var avgSpeed = 0;
+            var sumSpeeds = 0;
+            var sumLifespan = 0;
+            var sumReproductiveSize = 0;
+            var sumNumOffspring = 0;
+            var sumPropToRotate = 0;
+            for (let [cell_id, cell] of livingCells.entries()) {
+                //if (cell.birthSize in sizeDict) {
+                //    sizeDict[cell.birthSize] += 1;
+                //} else {
+                //    sizeDict[cell.birthSize] = 1;
+                //}
+                sumSizes += cell.birthSize;
+
+                //if (cell.speed in speedDict) {
+                //    speedDict[cell.speed] += 1;
+                //} else {
+                //    speedDict[cell.speed] = 1;
+                //}
+                sumSpeeds += cell.speed;
+                sumLifespan += cell.lifespan;
+                sumReproductiveSize += cell.reproductiveSize;
+                sumNumOffspring += cell.numOffspring;
+                sumPropToRotate += cell.propensityToRotate;
+
+            }
+
+            var li = document.createElement("li");
+            var text = document.createTextNode(`Gen #${DAY / 75}: avg. size = ${(sumSizes / livingCells.size).toPrecision(3)}, 
+                                                                    avg. speed = ${(sumSpeeds / livingCells.size).toPrecision(3)},
+                                                                    avg. lifespan = ${(sumLifespan / livingCells.size).toPrecision(3)},
+                                                                    avg. reproductive size = ${(sumReproductiveSize / livingCells.size).toPrecision(3)},
+                                                                    avg. number of offspring = ${(sumNumOffspring / livingCells.size).toPrecision(3)}
+                                                                    avg. propensity to rotate = ${(sumPropToRotate / livingCells.size).toPrecision(3)}`);
+            li.appendChild(text);
+            document.getElementById("stats").appendChild(li);
+        }
+
+        DAY++;
+        document.getElementById("days").innerHTML = "Day: " + DAY;
+        document.getElementById("population").innerHTML = "Population: " + livingCells.size;
+    }
+
+    // drawLivingCells: loops through livingCells map and
+    // draws cells if they're alive
+    function drawLivingCells(context) {
+        for (let [id, cell] of livingCells.entries()) {
+            drawCell(cell, context);
+        }
+    }
+
+    function drawFoods(context) {
+        for (let [id, food] of foodList.entries()) {
+            context.fillStyle = food.color;
+            context.beginPath();
+            //console.log(cell.orientation)
+            context.arc(food.x_pos, food.y_pos, food.size, 0, Math.PI * 2);
+            context.fill();
+        }
+    }
+
+    function drawCell(cell, context) {
+        context.fillStyle = cell.color;
+        context.beginPath();
+        //console.log(cell.orientation)
+        context.arc(cell.x_pos, cell.y_pos, cell.size, 0, Math.PI * 2);
+        context.fill();
+    }
+
+    function getRandomInt(min, max) {
+        min = Math.ceil(min);
+        max = Math.floor(max);
+        return Math.floor(Math.random() * (max - min + 1) + min); //The maximum is inclusive and the minimum is inclusive
+    }
+    </script>
+</head>
+<body>
+        <button id="run">Start</button>
+        <button id="pause">Pause</button>
+        <p><span id="days">Day: 0</span></p>
+        <p><span id="population">Population: 2</span></p>
+        <div id="arena-canvas"></div>
+        <ul id="stats"></ul>
+</body>
+</html>
